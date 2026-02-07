@@ -1,1 +1,584 @@
-a
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>限界しりとり Online - YOIYAMI White Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+
+        .pixel-font { font-family: 'DotGothic16', sans-serif; }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transition: all 0.2s;
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+        .btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+        .btn-secondary {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            color: #475569;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(37, 99, 235, 0.3); }
+            50% { border-color: rgba(37, 99, 235, 1); }
+            100% { border-color: rgba(37, 99, 235, 0.3); }
+        }
+        .active-turn { animation: pulse-border 2s infinite; border-width: 3px; }
+
+        .logo-container {
+            max-width: 240px;
+            margin: 0 auto;
+        }
+
+        #overlay-result {
+            background-color: rgba(255, 255, 255, 1);
+        }
+
+        input[type=range] {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- BGM Player -->
+    <audio id="bgm-player" loop></audio>
+
+    <div id="app" class="w-full max-w-md space-y-4">
+        
+        <!-- UI: Name Input -->
+        <div id="view-auth" class="glass rounded-3xl p-8 shadow-xl space-y-6 text-center">
+            <div class="logo-container mb-4">
+                <img src="https://ra3ds0309.github.io/genkai-siritori-sz/genkai-siritori.png" alt="Logo" class="w-full h-auto">
+            </div>
+            <input type="text" id="input-username" placeholder="プレイヤー名" maxlength="10" 
+                class="w-full bg-white border-2 border-slate-100 rounded-2xl px-4 py-4 text-center text-slate-800 focus:border-blue-500 outline-none shadow-sm">
+            <button id="btn-start" class="btn-primary w-full py-4 rounded-2xl font-bold text-white shadow-lg">ゲーム開始</button>
+        </div>
+
+        <!-- UI: Global Header -->
+        <div id="global-header" class="hidden glass rounded-2xl p-3 flex justify-between items-center shadow-sm">
+            <div class="flex items-center space-x-3">
+                <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                <span id="display-myname" class="text-sm font-black text-slate-700">Player</span>
+            </div>
+            <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-full">
+                <span id="display-vol" class="text-[10px] font-bold text-slate-400 w-8">50%</span>
+                <input type="range" id="slider-vol" min="0" max="1" step="0.01" value="0.5" class="w-16 h-1 bg-slate-300 rounded-lg appearance-none">
+            </div>
+        </div>
+
+        <!-- UI: Main Menu -->
+        <div id="view-menu" class="hidden glass rounded-3xl p-8 space-y-6 shadow-xl">
+            <div class="bg-blue-50 p-6 rounded-2xl space-y-4">
+                <h2 class="font-bold text-blue-700">新規ルーム</h2>
+                <select id="select-time" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="120">2分</option>
+                    <option value="180">3分</option>
+                    <option value="300" selected>5分</option>
+                </select>
+                <button id="btn-create" class="btn-primary w-full py-3 rounded-xl font-bold text-white">作成</button>
+            </div>
+            <div class="space-y-3">
+                <input type="text" id="input-join-id" placeholder="ルームID" maxlength="5" class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-center uppercase font-mono tracking-widest outline-none">
+                <button id="btn-join" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-white">参加</button>
+            </div>
+        </div>
+
+        <!-- UI: Lobby -->
+        <div id="view-lobby" class="hidden space-y-4">
+            <div class="glass rounded-2xl p-6 flex flex-col items-center space-y-3 shadow-md border-t-4 border-blue-500">
+                <span class="text-[10px] font-bold text-slate-400">Room ID</span>
+                <span id="display-room-id" class="text-4xl font-mono font-black text-slate-800 tracking-widest">-----</span>
+            </div>
+            <div class="glass rounded-2xl p-5 space-y-4">
+                <div id="lobby-user-list" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- UI: Game -->
+        <div id="view-game" class="hidden space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <div id="timer-p1-box" class="glass rounded-2xl p-4 text-center border-2 border-transparent transition-all">
+                    <div id="name-p1" class="text-[10px] font-black text-slate-400 truncate mb-1">P1</div>
+                    <div id="time-p1" class="text-3xl font-mono font-black text-slate-800">00:00</div>
+                </div>
+                <div id="timer-p2-box" class="glass rounded-2xl p-4 text-center border-2 border-transparent transition-all">
+                    <div id="name-p2" class="text-[10px] font-black text-slate-400 truncate mb-1">P2</div>
+                    <div id="time-p2" class="text-3xl font-mono font-black text-slate-800">00:00</div>
+                </div>
+            </div>
+
+            <div class="glass rounded-3xl p-6 space-y-6 relative overflow-hidden shadow-xl border-b-4 border-slate-200">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Turn</span>
+                        <div id="display-turn-name" class="text-lg font-black text-slate-800">---</div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Target</span>
+                        <div id="display-length" class="text-5xl font-black text-blue-600 pixel-font">3</div>
+                    </div>
+                </div>
+                <div class="bg-slate-50 rounded-2xl py-8 px-4 text-center border border-slate-100 relative">
+                    <div id="display-last-word" class="text-4xl font-black tracking-widest text-slate-800">---</div>
+                    <div class="absolute -bottom-3 left-1/2 -translate-x-1/2">
+                        <button id="btn-chotto" class="bg-red-500 text-white text-[10px] font-black px-6 py-2 rounded-full shadow-lg">ちょと待てぃ！！</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Commands -->
+            <div id="game-controls" class="grid grid-cols-4 gap-2">
+                <button data-cmd="red" class="bg-white border border-slate-200 p-2 rounded-xl text-[9px] font-black text-slate-600 shadow-sm">文字数減</button>
+                <button data-cmd="rld" class="bg-white border border-slate-200 p-2 rounded-xl text-[9px] font-black text-slate-600 shadow-sm">リロード</button>
+                <button data-cmd="nmw" class="bg-purple-50 border border-purple-200 text-purple-600 p-2 rounded-xl text-[9px] font-black shadow-sm">「ん」廻</button>
+                <button id="btn-pass" class="bg-orange-50 border border-orange-200 text-orange-600 p-2 rounded-xl text-[9px] font-black shadow-sm">パス(5s)</button>
+            </div>
+
+            <!-- Input Area -->
+            <div id="input-area" class="space-y-3">
+                <div id="hint-display" class="flex flex-wrap justify-center gap-2"></div>
+                <div class="relative flex items-center gap-2">
+                    <div class="relative flex-grow">
+                        <input type="text" id="input-word" placeholder="ひらがな..." autocomplete="off" class="w-full bg-white border-2 border-slate-200 rounded-2xl px-5 py-4 text-xl font-bold outline-none">
+                        <span id="display-input-len" class="absolute right-4 top-1/2 -translate-y-1/2 font-mono text-xl text-slate-300">0</span>
+                    </div>
+                    <!-- Help Button for Player -->
+                    <button id="btn-request-hint" class="bg-yellow-100 p-4 rounded-2xl text-yellow-600 hover:bg-yellow-200 transition-colors" title="観戦者にヒントを求める">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                    </button>
+                    <!-- Simple Google Button -->
+                    <button id="btn-google" class="bg-slate-800 px-4 py-4 rounded-2xl text-white text-xs font-black">Google</button>
+                </div>
+                <button id="btn-submit" class="w-full btn-primary py-4 rounded-2xl font-black text-white text-lg">決定</button>
+            </div>
+
+            <!-- Audience Hint UI (Only visible when requested) -->
+            <div id="audience-ui" class="glass rounded-2xl p-4 border-2 border-dashed border-yellow-300 space-y-3 hidden">
+                <p class="text-[10px] font-bold text-yellow-600 text-center animate-bounce">💡 ヒントが求められています！</p>
+                <div class="flex space-x-2">
+                    <input type="text" id="input-hint" placeholder="ヒントを送信..." class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs outline-none">
+                    <button id="btn-send-hint" class="bg-slate-800 px-4 py-2 rounded-xl text-xs font-bold text-white">送る</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Overlay -->
+        <div id="overlay-result" class="fixed inset-0 z-[200] flex items-center justify-center p-6 hidden">
+            <div class="text-center space-y-8">
+                <div id="result-icon" class="text-9xl">👑</div>
+                <div>
+                    <h2 id="result-text" class="text-6xl font-black pixel-font text-slate-800">VICTORY</h2>
+                    <p id="result-reason" class="text-slate-500 text-xl font-bold mt-2"></p>
+                </div>
+                <div class="flex flex-col gap-3 w-64 mx-auto">
+                    <button id="btn-return-lobby" class="btn-primary py-4 rounded-2xl font-bold text-white shadow-xl">ロビーに戻る</button>
+                    <button onclick="location.reload()" class="btn-secondary py-3 rounded-xl font-bold">終了</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Judge Overlay -->
+        <div id="overlay-judge" class="fixed inset-0 bg-white/95 z-[110] flex items-center justify-center p-6 hidden">
+            <div class="glass p-8 rounded-3xl text-center space-y-8 w-full max-w-sm">
+                <h2 class="text-3xl font-black text-red-500 pixel-font animate-pulse">判定中！</h2>
+                <p id="judge-word-display" class="text-4xl font-black text-slate-800">---</p>
+                <div id="judge-actions" class="grid grid-cols-2 gap-4">
+                    <button data-vote="safe" class="bg-green-500 text-white py-4 rounded-2xl font-bold">セーフ</button>
+                    <button data-vote="out" class="bg-red-500 text-white py-4 rounded-2xl font-bold">アウト</button>
+                </div>
+                <div id="judge-waiting" class="hidden text-slate-400 italic">他の投票を待っています...</div>
+            </div>
+        </div>
+
+        <!-- nmw Overlay -->
+        <div id="overlay-nmw" class="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-6 hidden">
+            <div class="glass p-8 rounded-3xl text-center space-y-6 max-w-xs border-purple-300">
+                <h3 class="text-xl font-black text-purple-600">「ん」廻し発動</h3>
+                <p class="text-xs text-slate-500">相手に1つ前の文字から開始させますか？</p>
+                <div class="flex flex-col gap-3">
+                    <button id="btn-nmw-confirm" class="bg-purple-600 text-white py-3 rounded-xl font-bold">発動</button>
+                    <button id="btn-nmw-cancel" class="btn-secondary py-3 rounded-xl font-bold">負けを認める</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'genkai-siritori-yoiyami-v2';
+
+        let user = null;
+        let myName = "";
+        let roomId = null;
+        let myRole = 'spectator';
+        let currentRoom = null;
+        let timerInt = null;
+        let pendingWord = null;
+
+        const el = (id) => document.getElementById(id);
+        const bgmPlayer = el('bgm-player');
+        
+        const BGM_URLS = [
+            "https://ra3ds0309.github.io/genkai-siritori-sz/YOIYAMI-%E5%AE%B5%E9%97%87-.mp3",
+            "https://ra3ds0309.github.io/genkai-siritori-sz/Sw.mp3"
+        ];
+
+        const playRandomBGM = () => {
+            const randomSrc = BGM_URLS[Math.floor(Math.random() * BGM_URLS.length)];
+            bgmPlayer.src = randomSrc;
+            bgmPlayer.play().catch(e => console.log("Audio play deferred:", e));
+        };
+
+        el('slider-vol').oninput = (e) => {
+            const v = parseFloat(e.target.value);
+            bgmPlayer.volume = v;
+            el('display-vol').textContent = `${Math.round(v * 100)}%`;
+        };
+
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        };
+
+        onAuthStateChanged(auth, (u) => { if (u) user = u; });
+
+        el('btn-start').onclick = () => {
+            myName = el('input-username').value.trim();
+            if (!myName) return;
+            el('view-auth').classList.add('hidden');
+            el('global-header').classList.remove('hidden');
+            el('display-myname').textContent = myName;
+            el('view-menu').classList.remove('hidden');
+            playRandomBGM();
+            initAuth();
+        };
+
+        const generateLength = () => {
+            const r = Math.random();
+            if (r < 0.1) return "9+";
+            return Math.floor(Math.random() * 6) + 3;
+        };
+
+        el('btn-create').onclick = async () => {
+            const id = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const timeLimit = parseInt(el('select-time').value);
+            const initialData = {
+                hostId: user.uid,
+                status: 'lobby',
+                timeLimit: timeLimit,
+                users: { [user.uid]: { name: myName, role: 'host' } },
+                p1: null, p2: null,
+                lastWord: 'しりとり',
+                targetLength: 4,
+                turn: 'p1',
+                p1Time: timeLimit, p2Time: timeLimit,
+                history: [{ word: 'しりとり', nmw: false }],
+                commands: { p1: { red: 1, rld: 1, nmw: 1 }, p2: { red: 1, rld: 1, nmw: 1 } },
+                judgeMode: false, votes: {},
+                lastTick: Date.now(),
+                hints: [],
+                hintRequested: false,
+                winner: null
+            };
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id), initialData);
+            joinRoom(id);
+        };
+
+        el('btn-join').onclick = () => {
+            const id = el('input-join-id').value.trim().toUpperCase();
+            if (id.length === 5) joinRoom(id);
+        };
+
+        const joinRoom = (id) => {
+            roomId = id;
+            el('view-menu').classList.add('hidden');
+            el('view-lobby').classList.remove('hidden');
+            el('display-room-id').textContent = id;
+            onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id), (snap) => {
+                if (!snap.exists()) return;
+                const data = snap.data();
+                currentRoom = data;
+                if (!data.users[user.uid]) {
+                    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id), {
+                        [`users.${user.uid}`]: { name: myName, role: 'member' }
+                    });
+                }
+                renderRoom(data);
+            });
+        };
+
+        const renderRoom = (data) => {
+            if (data.status === 'lobby') {
+                el('view-game').classList.add('hidden');
+                el('view-lobby').classList.remove('hidden');
+                el('overlay-result').classList.add('hidden');
+                const list = el('lobby-user-list');
+                list.innerHTML = "";
+                const isHost = data.hostId === user.uid;
+                Object.entries(data.users).forEach(([uid, uinfo]) => {
+                    const row = document.createElement('div');
+                    row.className = "flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm";
+                    row.innerHTML = `<span class="text-xs font-black text-slate-600">${uinfo.name}</span>`;
+                    if (isHost && uid !== user.uid) {
+                        const btn = document.createElement('button');
+                        btn.className = "bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-lg";
+                        btn.textContent = "対戦開始";
+                        btn.onclick = async () => {
+                            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), {
+                                status: 'playing', p1: user.uid, p1Name: myName, p2: uid, p2Name: uinfo.name, lastTick: Date.now()
+                            });
+                        };
+                        row.appendChild(btn);
+                    }
+                    list.appendChild(row);
+                });
+            } else {
+                el('view-lobby').classList.add('hidden');
+                el('view-game').classList.remove('hidden');
+                myRole = (data.p1 === user.uid) ? 'p1' : (data.p2 === user.uid ? 'p2' : 'spectator');
+                renderGame(data);
+            }
+        };
+
+        const formatTime = (s) => {
+            const sec = Math.max(0, Math.floor(s));
+            const m = Math.floor(sec / 60);
+            const r = sec % 60;
+            return `${m}:${String(r).padStart(2, '0')}`;
+        };
+
+        const renderGame = (data) => {
+            el('name-p1').textContent = data.p1Name;
+            el('name-p2').textContent = data.p2Name;
+            el('display-last-word').textContent = data.lastWord;
+            el('display-length').textContent = data.targetLength;
+
+            const isMyTurn = data.turn === myRole;
+            el('display-turn-name').textContent = isMyTurn ? "あなたの番" : `${data[data.turn + 'Name']}の番`;
+            el('timer-p1-box').className = `glass rounded-2xl p-4 text-center border-2 transition-all ${data.turn === 'p1' ? 'active-turn border-blue-500 bg-blue-50/50' : 'border-transparent'}`;
+            el('timer-p2-box').className = `glass rounded-2xl p-4 text-center border-2 transition-all ${data.turn === 'p2' ? 'active-turn border-red-500 bg-red-50/50' : 'border-transparent'}`;
+
+            el('input-area').classList.toggle('hidden', myRole === 'spectator');
+            el('game-controls').classList.toggle('hidden', myRole === 'spectator');
+            
+            // Audience Hint Logic: Show UI only if spectator AND player requested hint
+            el('audience-ui').classList.toggle('hidden', !(myRole === 'spectator' && data.hintRequested));
+
+            el('overlay-judge').classList.toggle('hidden', !data.judgeMode);
+            if (data.judgeMode) {
+                const latest = data.history[data.history.length-1].word;
+                el('judge-word-display').textContent = latest;
+                const voted = data.votes[user.uid];
+                el('judge-actions').classList.toggle('hidden', !!voted);
+                el('judge-waiting').classList.toggle('hidden', !voted);
+            }
+
+            if (data.winner) {
+                el('overlay-result').classList.remove('hidden');
+                el('result-text').textContent = (data.winner === myRole) ? "VICTORY" : "DEFEAT";
+                el('result-reason').textContent = data.reason;
+                stopTimer();
+            } else {
+                el('overlay-result').classList.add('hidden');
+                startTimer();
+            }
+
+            el('hint-display').innerHTML = data.hints.map(h => `<span class="bg-blue-600 text-white px-3 py-1 rounded-full text-[10px] shadow-sm font-bold animate-fade-in">${h}</span>`).join('');
+        };
+
+        const startTimer = () => {
+            if (timerInt) return;
+            timerInt = setInterval(() => {
+                if (!currentRoom || currentRoom.winner || currentRoom.judgeMode) return;
+                const now = Date.now();
+                const delta = (now - currentRoom.lastTick) / 1000;
+                const p1Remains = currentRoom.turn === 'p1' ? Math.max(0, currentRoom.p1Time - delta) : currentRoom.p1Time;
+                const p2Remains = currentRoom.turn === 'p2' ? Math.max(0, currentRoom.p2Time - delta) : currentRoom.p2Time;
+                el('time-p1').textContent = formatTime(p1Remains);
+                el('time-p2').textContent = formatTime(p2Remains);
+                if (currentRoom.turn === myRole && (myRole === 'p1' ? p1Remains : p2Remains) <= 0) {
+                    stopTimer();
+                    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), {
+                        winner: myRole === 'p1' ? 'p2' : 'p1',
+                        reason: '時間切れ',
+                        [myRole + 'Time']: 0
+                    });
+                }
+            }, 100);
+        };
+        const stopTimer = () => { clearInterval(timerInt); timerInt = null; };
+
+        const toHiragana = (s) => s.replace(/[\u30a1-\u30f6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60));
+
+        const getStartChar = (word, nmw) => {
+            const hWord = toHiragana(word);
+            const invalidChars = ['ん', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'っ', 'ゃ', 'ゅ', 'ょ', 'ー'];
+            if (nmw && hWord.endsWith('ん')) {
+                for (let i = hWord.length - 2; i >= 0; i--) {
+                    if (!invalidChars.includes(hWord[i])) return hWord[i];
+                }
+            }
+            for (let i = hWord.length - 1; i >= 0; i--) {
+                if (!invalidChars.includes(hWord[i])) return hWord[i];
+            }
+            return hWord[0];
+        };
+
+        el('btn-submit').onclick = () => {
+            if (currentRoom.turn !== myRole || currentRoom.judgeMode) return;
+            const word = toHiragana(el('input-word').value.trim());
+            if (!word) return;
+            const prev = currentRoom.history[currentRoom.history.length-1];
+            const startChar = getStartChar(prev.word, prev.nmw);
+            const target = currentRoom.targetLength;
+            const isLengthOk = target === "9+" ? word.length >= 9 : word.length === target;
+            if (word[0] !== startChar || !isLengthOk) return;
+            const now = Date.now();
+            const remains = currentRoom[myRole + 'Time'] - (now - currentRoom.lastTick) / 1000;
+            pendingWord = { word, remains };
+            if (word.endsWith('ん')) {
+                if ((currentRoom.commands[myRole].nmw || 0) > 0) el('overlay-nmw').classList.remove('hidden');
+                else submitMove(false);
+            } else {
+                submitMove(false);
+            }
+        };
+
+        const submitMove = async (isNmw) => {
+            if (!pendingWord) return;
+            const { word, remains } = pendingWord;
+            const updates = {
+                lastWord: word,
+                history: [...currentRoom.history, { word, nmw: isNmw }],
+                targetLength: generateLength(),
+                turn: myRole === 'p1' ? 'p2' : 'p1',
+                [myRole + 'Time']: remains,
+                lastTick: Date.now(),
+                hints: [],
+                hintRequested: false
+            };
+            if (word.endsWith('ん') && !isNmw) {
+                updates.winner = myRole === 'p1' ? 'p2' : 'p1';
+                updates.reason = "「ん」がつきました";
+            }
+            if (isNmw) updates[`commands.${myRole}.nmw`] = 0;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), updates);
+            el('overlay-nmw').classList.add('hidden');
+            el('input-word').value = "";
+            pendingWord = null;
+        };
+
+        el('btn-nmw-confirm').onclick = () => submitMove(true);
+        el('btn-nmw-cancel').onclick = () => submitMove(false);
+
+        el('btn-pass').onclick = async () => {
+            if (currentRoom.turn !== myRole || currentRoom.judgeMode) return;
+            const now = Date.now();
+            const remains = currentRoom[myRole + 'Time'] - (now - currentRoom.lastTick) / 1000 - 5;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), {
+                targetLength: generateLength(),
+                turn: myRole === 'p1' ? 'p2' : 'p1',
+                [myRole + 'Time']: remains,
+                lastTick: Date.now(),
+                hintRequested: false
+            });
+        };
+
+        el('btn-request-hint').onclick = async () => {
+            if (currentRoom.turn !== myRole) return;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), { hintRequested: true });
+        };
+
+        el('btn-google').onclick = () => {
+            const word = el('input-word').value.trim();
+            if (word) window.open(`https://www.google.com/search?q=${encodeURIComponent(word)}+意味`, '_blank');
+        };
+
+        el('btn-send-hint').onclick = async () => {
+            const h = el('input-hint').value.trim();
+            if (!h) return;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), { hints: [...currentRoom.hints, h].slice(-3) });
+            el('input-hint').value = "";
+        };
+
+        document.querySelectorAll('[data-cmd]').forEach(b => {
+            b.onclick = async () => {
+                const c = b.dataset.cmd;
+                if (c === 'nmw') return; 
+                const updates = { [`commands.${myRole}.${c}`]: 0 };
+                if (c === 'red') updates.targetLength = (currentRoom.targetLength === "9+") ? 8 : Math.max(2, currentRoom.targetLength - 1);
+                if (c === 'rld') updates.targetLength = generateLength();
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), updates);
+            };
+        });
+
+        el('btn-chotto').onclick = async () => {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), { judgeMode: true, votes: {} });
+        };
+
+        document.querySelectorAll('[data-vote]').forEach(b => {
+            b.onclick = async () => {
+                const vote = b.dataset.vote;
+                const ref = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+                await updateDoc(ref, { [`votes.${user.uid}`]: vote });
+                const snap = await getDoc(ref);
+                const data = snap.data();
+                const total = Object.keys(data.users).length;
+                const votes = Object.values(data.votes);
+                if (votes.filter(v => v === 'out').length > total / 2) {
+                    await updateDoc(ref, { judgeMode: false, winner: data.turn === 'p1' ? 'p2' : 'p1', reason: '審議によりアウト' });
+                } else if (votes.length >= total || votes.filter(v => v === 'safe').length > total / 2) {
+                    await updateDoc(ref, { judgeMode: false, lastTick: Date.now() });
+                }
+            };
+        });
+
+        el('btn-return-lobby').onclick = async () => {
+            playRandomBGM();
+            // 状態をリセットしつつ status: 'lobby' に戻す
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), {
+                status: 'lobby', winner: null, p1: null, p2: null,
+                p1Time: currentRoom.timeLimit, p2Time: currentRoom.timeLimit,
+                history: [{ word: 'しりとり', nmw: false }],
+                lastWord: 'しりとり', targetLength: 4, turn: 'p1',
+                commands: { p1: { red: 1, rld: 1, nmw: 1 }, p2: { red: 1, rld: 1, nmw: 1 } },
+                hints: [], hintRequested: false, votes: {}, judgeMode: false,
+                lastTick: Date.now()
+            });
+        };
+
+        el('input-word').oninput = (e) => el('display-input-len').textContent = e.target.value.length;
+    </script>
+</body>
+</html>
